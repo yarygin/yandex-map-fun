@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Тестовое задание</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <script src="https://api-maps.yandex.ru/2.0-stable/?load=package.full&lang=ru-RU" type="text/javascript"></script>
+    <script src="https://code.jquery.com/jquery-2.1.4.min.js" type="text/javascript"></script>
+    <script type="text/javascript">
+        function Waypoint(title, point, placemark){
+            var that = this;
+            this.point = point;
+            this.address = null;
+            this.title = title;
+            this.placemark = null;
+
+            this.setAddress = function(address) {
+                this.address = address;
+            }
+            this.setPlacemark = function(placemark) {
+                this.placemark = placemark;
+                console.log(this.placemark);
+                this.placemark.events.add('dragend', this.dragend);
+            }
+
+            this.dragend = function(e){
+                that.point = e.get('target').geometry.getCoordinates();
+                mapRouter.drawRoute();
+            };
+        }
+        function MapRouter(map_id){
+            var that = this;
+            this.map = null;
+            this.route = null;
+            this.waypoints = [];
+
+            this.mapInit = function(){
+                that.map = new ymaps.Map (map_id, {
+                    center: [55.76, 37.64],
+                    zoom: 6,
+                    controls: ['smallMapDefaultSet']
+                });
+            };
+            this.getAddress = function (coords, callback) {
+                ymaps.geocode(coords, {results: 1}).then(callback);
+            }
+            this.addWaypoint = function(title, callback) {
+                var point = this.getWaypointCoord();
+                var waypoint = new Waypoint(title, point);
+                this.getAddress(point, function (res) {
+                    var firstGeoObject = res.geoObjects.get(0);
+                    waypoint.setAddress(firstGeoObject.properties.get('text'));
+                    that.placeWaypoint(waypoint);
+                });
+                this.waypoints.push(waypoint);
+                callback(waypoint);
+                this.drawRoute(this.getMapWaypoints());
+            };
+            this.placeWaypoint = function(waypoint){
+                waypoint.setPlacemark(new ymaps.Placemark(
+                    waypoint.point,
+                    {content: waypoint.title, balloonContent: waypoint.address},
+                    {draggable: true})
+                );
+                that.map.geoObjects.add(waypoint.placemark);
+            };
+            this.getWaypointCoord = function() {
+                return this.map.getCenter();
+            };
+            this.getMapWaypoints = function() {
+                return this.waypoints.map(function(waypoint){
+                    return waypoint.point;
+                });
+            };
+            this.drawRoute = function(waypoints){
+                waypoints = waypoints || this.getMapWaypoints();
+                var routePoints = waypoints.map(function(waypoint, index){
+                    return { type:'wayPoint', point: waypoint}
+                });
+                console.log(waypoints);
+                that.route && that.map.geoObjects.remove(that.route);
+                ymaps.route(routePoints, {
+                    noPlacemark: true,
+                    mapStateAutoApply: true
+                 }).then(function (route) {
+                    var points = route.getWayPoints();
+                    points.each(function(point, index){
+                        point.options.set('visible', false);
+                        // point = that.waypoints[index].placemark;
+                    });
+                    that.map.geoObjects.add(that.route = route);
+                 });
+            }
+        }
+
+    mapRouter = new MapRouter("map");
+    ymaps.ready(mapRouter.mapInit);
+
+    $(function(){
+        $("#waypoints").on('change', "input[name='waypoint']", function(e){
+            var that = this;
+            mapRouter.addWaypoint($(this).val(), function(waypoint){
+                var li = $("<li></li>").text(waypoint.title);
+                $("#waypoints_list").append(li);
+                $(that).val("");
+            });
+        });
+    });
+</script>
+</head>
+<body>
+    <div id="waypoints">
+        <input type="text" name="waypoint" />
+        <ul id="waypoints_list"></ul>
+    </div>
+    <div id="map" style="width: 600px; height: 400px"></div>
+</body>
+
+</html>
